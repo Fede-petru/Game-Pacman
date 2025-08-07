@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <title>PacMan</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    body {
+      background-color: black;
+      color: white;
+      font-family: Arial;
+    }
+
+    #box {
+      text-align: center;
+      margin-bottom: 10px;
+    }
+
+    #punteggio p {
+      font-size: 24px;
+      font-weight: bold;
+      color: yellow;
+      text-shadow: 2px 2px 3px black;
+    }
+
+    #info p {
+      font-size: 16px;
+      color: lightgray;
+    }
+
+    #controlli {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    #mappa {
+      margin: 0 auto;
+      border: 3px solid #0033ff;
+      width: 600px;
+      height: 600px;
+    }
+
+    .riga {
+      height: 40px;
+      display: block;
+    }
+
+    .riga div {
+      width: 40px;
+      height: 40px;
+      float: left;
+      box-sizing: border-box;
+    }
+
+    .parete {
+      background-color: #0033ff;
+    }
+
+    .pallino {
+      background-color: black;
+      background-image: radial-gradient(white 3px, transparent 3px);
+      background-repeat: no-repeat;
+      background-position: center;
+    }
+
+    .pacman {
+      background-color: yellow;
+      border-radius: 50%;
+    }
+
+    .fantasma {
+      background-color: red;
+      border-radius: 50%;
+    }
+
+    #cronologia {
+      position: absolute;
+      top: 100px;
+      right: 30px;
+      width: 200px;
+      background-color: #222;
+      border: 2px solid white;
+      border-radius: 8px;
+      padding: 10px;
+      color: white;
+    }
+
+    #cronologia h3 {
+      margin-top: 0;
+      text-align: center;
+      font-size: 18px;
+    }
+
+    #listaCronologia {
+      list-style: none;
+      padding-left: 0;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    #listaCronologia li {
+      padding: 5px;
+      border-bottom: 1px solid gray;
+    }
+  </style>
+  <script src="https://code.jquery.com/jquery-3.7.1.slim.min.js"></script>
+</head>
+<body>
+<h2 style="text-align:center; font-family: Arial; color: white;">PACMAN</h2>
+
+<div id="box">
+  <div id="punteggio"><p>Punti: 0</p></div>
+  <div id="info"><p>Usa le frecce per muoverti!</p></div>
+</div>
+
+<div id="controlli">
+  Difficoltà:
+  <select id="difficolta">
+    <option value="300">Facile</option>
+    <option value="200">Media</option>
+    <option value="100">Difficile</option>
+    <option value="50">Estrema</option>
+  </select>
+  <button onclick="avviaGioco()">Avvia</button>
+  <button onclick="resetCronologia()">Reset Cronologia</button>
+</div>
+
+<div id="mappa"></div>
+
+<div id="cronologia">
+  <h3>Cronologia</h3>
+  <ul id="listaCronologia"></ul>
+</div>
+
+<script>
+  const Gioco = {
+    righe: 15,
+    colonne: 15,
+    pacman: { x: 1, y: 1 },
+    fantasma: { x: 13, y: 13 },
+    direzione: { x: 0, y: 0 },
+    punteggio: 0,
+    intervalFantasma: null,
+    intervalPacman: null,
+    pareti: [],
+
+    generaPareti() {
+      this.pareti = [];
+      for (let y = 0; y < this.righe; y++) {
+        for (let x = 0; x < this.colonne; x++) {
+          if (x === 0 || x === this.colonne - 1 || y === 0 || y === this.righe - 1 || (x % 4 === 0 && y % 4 === 0)) {
+            this.pareti.push([x, y]);
+          }
+        }
+      }
+    },
+
+    creaMappa() {
+      $("#mappa").empty();
+      for (let y = 0; y < this.righe; y++) {
+        let riga = $("<div class='riga'></div>");
+        for (let x = 0; x < this.colonne; x++) {
+          let cella = $("<div></div>");
+          cella.attr("x", x).attr("y", y);
+
+          if (this.pareti.some(p => p[0] === x && p[1] === y)) {
+            cella.attr("elemento", "parete").addClass("parete");
+          } else {
+            cella.attr("elemento", "pallino").addClass("pallino");
+          }
+          riga.append(cella);
+        }
+        $("#mappa").append(riga);
+      }
+    },
+
+    aggiornaMappa() {
+      $("div[elemento='pacman']").removeClass("pacman").attr("elemento", "vuoto");
+      $("div[elemento='ghost']").removeClass("fantasma").attr("elemento", "vuoto");
+
+      const pacDiv = $(`div[x=${this.pacman.x}][y=${this.pacman.y}]`);
+      if (pacDiv.hasClass("pallino")) {
+        pacDiv.removeClass("pallino");
+        this.punteggio += 10;
+        $("#punteggio p").text("Punti: " + this.punteggio);
+      }
+      pacDiv.addClass("pacman").attr("elemento", "pacman");
+
+      const ghostDiv = $(`div[x=${this.fantasma.x}][y=${this.fantasma.y}]`);
+      ghostDiv.addClass("fantasma").attr("elemento", "ghost");
+
+      if (this.pacman.x === this.fantasma.x && this.pacman.y === this.fantasma.y) {
+        clearInterval(this.intervalFantasma);
+        clearInterval(this.intervalPacman);
+        this.salvaPunteggio(this.punteggio);
+        alert("Sei stato preso! Punti: " + this.punteggio);
+        this.avviaGioco();
+      }
+
+      if ($(".pallino").length === 0) {
+        clearInterval(this.intervalFantasma);
+        clearInterval(this.intervalPacman);
+        this.salvaPunteggio(this.punteggio);
+        alert("Hai vinto! Punteggio finale: " + this.punteggio);
+        this.avviaGioco();
+      }
+    },
+
+    avviaGioco() {
+      this.punteggio = 0;
+      this.pacman = { x: 1, y: 1 };
+      this.fantasma = { x: this.colonne - 2, y: this.righe - 2 };
+      this.direzione = { x: 0, y: 0 };
+      $("#punteggio p").text("Punti: 0");
+
+      this.generaPareti();
+      this.creaMappa();
+      this.aggiornaMappa();
+
+      clearInterval(this.intervalFantasma);
+      let vel = parseInt($("#difficolta").val());
+      this.intervalFantasma = setInterval(() => this.muoviFantasma(), vel);
+
+      clearInterval(this.intervalPacman);
+      this.intervalPacman = setInterval(() => this.muoviPacman(), 100);
+
+      this.aggiornaCronologia();
+    },
+
+    muoviPacman() {
+      const next = { x: this.pacman.x + this.direzione.x, y: this.pacman.y + this.direzione.y };
+      const target = $(`div[x=${next.x}][y=${next.y}]`);
+      if (target.length && !target.hasClass("parete")) {
+        this.pacman = next;
+        this.aggiornaMappa();
+      }
+    },
+
+    muoviFantasma() {
+      let dx = this.pacman.x - this.fantasma.x;
+      let dy = this.pacman.y - this.fantasma.y;
+      let mosse = [];
+
+      if (dx !== 0) mosse.push({ x: Math.sign(dx), y: 0 });
+      if (dy !== 0) mosse.push({ x: 0, y: Math.sign(dy) });
+
+      if (mosse.length === 0 || Math.random() < 0.3) {
+        mosse = [
+          { x: 1, y: 0 },
+          { x: -1, y: 0 },
+          { x: 0, y: 1 },
+          { x: 0, y: -1 }
+        ];
+      }
+
+      for (let m of mosse) {
+        let nx = this.fantasma.x + m.x;
+        let ny = this.fantasma.y + m.y;
+        let t = $(`div[x=${nx}][y=${ny}]`);
+        if (t.length && !t.hasClass("parete")) {
+          this.fantasma = { x: nx, y: ny };
+          break;
+        }
+      }
+
+      this.aggiornaMappa();
+    },
+
+    salvaPunteggio(punti) {
+      let cronologia = JSON.parse(localStorage.getItem("cronologia")) || [];
+      let id = cronologia.length > 0 ? Math.max(...cronologia.map(p => p.id || 0)) + 1 : 1;
+      cronologia.push({ id: id, punteggio: punti });
+      localStorage.setItem("cronologia", JSON.stringify(cronologia));
+      this.aggiornaCronologia();
+    },
+
+    aggiornaCronologia() {
+      let cronologia = JSON.parse(localStorage.getItem("cronologia")) || [];
+      let valide = cronologia.filter(p => p && typeof p.id === "number" && typeof p.punteggio === "number");
+      valide.sort((a, b) => b.punteggio - a.punteggio);
+      $("#listaCronologia").empty();
+      for (let item of valide) {
+        $("#listaCronologia").append(`<li>Partita ${item.id}: ${item.punteggio} punti</li>`);
+      }
+    },
+
+    resetCronologia() {
+      localStorage.removeItem("cronologia");
+      this.aggiornaCronologia();
+    }
+  };
+
+  $(document).keydown(function (e) {
+    switch (e.key) {
+      case "ArrowUp":
+        Gioco.direzione = { x: 0, y: -1 };
+        break;
+      case "ArrowDown":
+        Gioco.direzione = { x: 0, y: 1 };
+        break;
+      case "ArrowLeft":
+        Gioco.direzione = { x: -1, y: 0 };
+        break;
+      case "ArrowRight":
+        Gioco.direzione = { x: 1, y: 0 };
+        break;
+    }
+  });
+
+  function avviaGioco() {
+    Gioco.avviaGioco();
+  }
+
+  function resetCronologia() {
+    Gioco.resetCronologia();
+  }
+
+  $(document).ready(function () {
+    Gioco.aggiornaCronologia();
+  });
+</script>
+</body>
+</html>
